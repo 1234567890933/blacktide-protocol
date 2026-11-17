@@ -61,15 +61,32 @@ jobs:
           ls ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable | head
           ~/godot/godot --version
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
+      # The android-actions/setup-android action is deliberately NOT used: its
+      # bundled sdkmanager breaks on newer runner images. Installing the command
+      # line tools at a pinned version is deterministic and one less moving part.
+      - name: Install Android SDK (pinned cmdline-tools)
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;${BUILD_TOOLS}"
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          ls "${ANDROID_HOME}/build-tools/${BUILD_TOOLS}/apksigner"
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -sSL -o /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -oq /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-unpack
+          rm -rf "$SDK_ROOT/cmdline-tools/latest"
+          mv /tmp/cmdline-tools-unpack/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Accept licences and install platform + build tools
+        run: |
+          set -euo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --sdk_root="$ANDROID_HOME" --licenses > /dev/null || true
+          "$SDKM" --sdk_root="$ANDROID_HOME" \
+            "platform-tools" "platforms;android-${ANDROID_API}" "build-tools;${BUILD_TOOLS}"
+          ls -l "$ANDROID_HOME/build-tools/${BUILD_TOOLS}/apksigner"
+          ls -l "$ANDROID_HOME/platforms/android-${ANDROID_API}/android.jar"
 
       - name: Generate debug keystore
         run: |
@@ -82,18 +99,18 @@ jobs:
 
       - name: Point Godot at the Android SDK
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.config/godot"
-          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<SETTINGS
-          [gd_resource type="EditorSettings" format=3]
-
-          [resource]
-          export/android/android_sdk_path = "${ANDROID_HOME}"
-          export/android/java_sdk_path = "${JAVA_HOME}"
-          export/android/debug_keystore = "${HOME}/keystore/debug.keystore"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          SETTINGS
-          cat "$HOME/.config/godot/editor_settings-4.3.tres"
+          SETTINGS="$HOME/.config/godot/editor_settings-4.3.tres"
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\n' > "$SETTINGS"
+          printf 'export/android/android_sdk_path = "%s"\n' "$ANDROID_HOME" >> "$SETTINGS"
+          printf 'export/android/java_sdk_path = "%s"\n' "$JAVA_HOME" >> "$SETTINGS"
+          printf 'export/android/debug_keystore = "%s"\n' "$HOME/keystore/debug.keystore" >> "$SETTINGS"
+          printf 'export/android/debug_keystore_user = "androiddebugkey"\n' >> "$SETTINGS"
+          printf 'export/android/debug_keystore_pass = "android"\n' >> "$SETTINGS"
+          echo "--- editor settings ---"
+          cat "$SETTINGS"
+          echo "ANDROID_HOME=$ANDROID_HOME  JAVA_HOME=$JAVA_HOME"
 
       - name: Import project
         run: ~/godot/godot --headless --path . --import
