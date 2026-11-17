@@ -1,0 +1,51 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gdscript:
+    name: GDScript check + headless match smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: 4.3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: Install Godot headless
+        run: |
+          set -e
+          mkdir -p ~/godot
+          if [ ! -f ~/godot/godot ]; then
+            curl -sSL -o /tmp/godot.zip \
+              "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+            unzip -oq /tmp/godot.zip -d ~/godot
+            mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+            chmod +x ~/godot/godot
+          fi
+          ~/godot/godot --version
+
+      - name: Import project
+        run: ~/godot/godot --headless --path . --import
+
+      - name: Load every script
+        run: ~/godot/godot --headless --path . --script tools/validate.gd
+
+      - name: Headless match smoke test
+        run: |
+          set -o pipefail
+          ~/godot/godot --headless --path . -- --smoke 2>&1 | tee /tmp/smoke.log
+          if grep -q "SCRIPT ERROR" /tmp/smoke.log; then
+            echo "::error::Runtime script error during smoke test"
+            exit 1
+          fi
