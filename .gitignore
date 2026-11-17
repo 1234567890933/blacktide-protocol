@@ -1,0 +1,20 @@
+# Godot 4
+.godot/
+*.translation
+export.cfg
+export_presets.cfg.bak
+/build/
+/builds/
+/dist/
+/android/
+*.apk
+*.aab
+*.keystore
+*.jks
+*.idsig
+# Downloaded third-party art (see assets/MANIFEST.md — fetched by tools/fetch_assets.sh)
+/assets/external/*
+!/assets/external/.gitkeep
+# OS
+.DS_Store
+Thumbs.db
