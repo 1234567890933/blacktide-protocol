@@ -11,6 +11,10 @@ on:
         default: "debug"
         required: true
 
+# softprops/action-gh-release needs write access; repos default to read-only.
+permissions:
+  contents: write
+
 env:
   GODOT_VERSION: "4.3"
   ANDROID_API: "34"
